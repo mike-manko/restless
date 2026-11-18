@@ -1,0 +1,13 @@
+{
+    "python.analysis.typeCheckingMode": "standard",
+    "python.analysis.diagnosticMode": "openFilesOnly",
+    // Do on save what the pre-commit hooks check, so commits stop failing on them
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "files.trimTrailingWhitespace": true,
+    // LF for new files, matching .gitattributes
+    "files.eol": "\n",
+    "python.testing.pytestArgs": ["tests"],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
+}

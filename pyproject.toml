@@ -1,0 +1,93 @@
+[project]
+name = "restless"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Michal Manko", email = "michalmanko@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "anyio>=4.16.0",
+    "fastapi>=0.163.2",
+    "httpx>=0.28.1",
+    "langchain-core>=1.8.2",
+    "langchain-openai>=1.8.1",
+    "langgraph>=1.2.22",
+    "openai>=3.54.0",
+    "pydantic>=2.14.3",
+    "pydantic-settings>=2.16.3",
+    "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.34",
+    "typer>=0.29.1",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+restless = "restless:main"
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 200
+src = ["src", "tests"]
+extend-exclude = ["src/restless/http/generated"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes: unused imports, undefined names
+    "I",      # isort: import order
+    "N",      # pep8-naming
+    "UP",     # pyupgrade: modern syntax (X | None, list[str])
+    "B",      # flake8-bugbear: likely bugs
+    "SIM",    # flake8-simplify
+    "ASYNC",  # flake8-async: blocking calls inside async code
+    "PT",     # flake8-pytest-style
+    "RUF",    # ruff-specific rules
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["restless"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+pretty = true
+files = ["src", "tests", "scripts"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["restless.http.generated.*"]
+warn_unreachable = false
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-ra --strict-markers -m 'not llm and not integration'"
+markers = [
+    "llm: calls a real LLM (costs money, needs an API key)",
+    "integration: calls real external services (needs network and credentials)",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.1",
+    "openapi-generator-cli[jdk4py]==7.27.0",
+    "pre-commit>=4.7.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "ruff>=0.17.5",
+]

@@ -1,0 +1,18 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "restless API",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            // create_app() in src/restless/api/app.py is a next task; --factory makes uvicorn call it
+            "args": ["restless.api.app:create_app", "--factory", "--host", "127.0.0.1", "--port", "8000"],
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "envFile": "${workspaceFolder}/.env",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
