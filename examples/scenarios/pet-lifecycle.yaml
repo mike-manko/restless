@@ -1,0 +1,6 @@
+name: pet lifecycle
+do: Add a new pet with status "available", then fetch it by its id, then change its status to "sold" and fetch it again.
+expect:
+  - adding the pet returns the pet with an id
+  - fetching it by id returns the same name and status "available"
+  - after the update, fetching it again shows status "sold"

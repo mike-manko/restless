@@ -1,0 +1,6 @@
+# API config for a first try: the public Swagger Petstore (no auth needed).
+# For your own API, add `scope: api://<app-id>/.default` and sign in with `az login` first.
+apis:
+  petstore:
+    url: https://petstore3.swagger.io/api/v3
+    openapi: https://petstore3.swagger.io/api/v3/openapi.json

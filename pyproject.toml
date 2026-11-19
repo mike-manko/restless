@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "anyio>=4.16.0",
+    "azure-identity>=1.27.0",
     "fastapi>=0.163.2",
     "httpx>=0.28.1",
     "langchain-core>=1.8.2",
@@ -19,6 +20,7 @@ dependencies = [
     "pydantic-settings>=2.16.3",
     "python-dotenv>=1.2.4",
     "python-multipart>=0.0.34",
+    "pyyaml>=6.0.3",
     "typer>=0.29.1",
     "uvicorn>=0.54.0",
 ]
@@ -90,4 +92,5 @@ dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.5.0",
     "ruff>=0.17.5",
+    "types-pyyaml>=6.0.12.20261113",
 ]
