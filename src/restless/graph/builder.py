@@ -2,7 +2,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from restless.graph.context import RunContext
-from restless.graph.nodes import AgentState, GraphInput, call_tools, check_budget, hard_failure_result, has_tool_calls, judge_result, load_scenario, next_executor_action
+from restless.graph.nodes import AgentState, GraphInput, call_tools, check_budget, check_tool_calls, hard_failure_result, judge_result, load_scenario, next_executor_action
 
 type RunGraph = CompiledStateGraph[AgentState, RunContext, GraphInput, AgentState]
 
@@ -22,7 +22,7 @@ def build_graph() -> RunGraph:
     builder.add_edge(START, "load_scenario")
     builder.add_edge("load_scenario", "next_executor_action")
 
-    builder.add_conditional_edges("next_executor_action", has_tool_calls)
+    builder.add_conditional_edges("next_executor_action", check_tool_calls)
     builder.add_conditional_edges("call_tools", check_budget)
 
     builder.add_edge("judge_result", END)

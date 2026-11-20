@@ -51,9 +51,12 @@ async def next_executor_action(state: AgentState, runtime: Runtime[RunContext]) 
     return {"messages": [ai_message], "steps": steps}
 
 
-# Route based on whether the last AI message has tool calls
-def has_tool_calls(state: AgentState, runtime: Runtime[RunContext]) -> Literal["call_tools", "judge_result"]:
-    """Return 'call_tools' if the executor's last message asks for tools, otherwise 'judge_result': no tool call means it finished."""
+# Route the executor's reply: run the tools it asked for, or end the run
+def check_tool_calls(state: AgentState, runtime: Runtime[RunContext]) -> Literal["call_tools", "judge_result"]:
+    """Return 'call_tools' if the executor's last message asks for tools within the HTTP budget, otherwise 'judge_result'.
+
+    No tool call means the executor finished. A request over the budget ends the run before it is sent.
+    """
 
     last_message = state["messages"][-1] if state["messages"] else None
 
@@ -61,6 +64,11 @@ def has_tool_calls(state: AgentState, runtime: Runtime[RunContext]) -> Literal["
         return "judge_result"
 
     if not last_message.tool_calls:
+        return "judge_result"
+
+    # Checked before the requests go out, so the budget is never overrun, and a run that needs exactly max_http_calls requests still gets the turn that finishes it:
+    requested = sum(1 for tool_call in last_message.tool_calls if tool_call["name"] == "http_request")
+    if len(state["call_log"]) + requested > runtime.context.max_http_calls:
         return "judge_result"
 
     return "call_tools"
@@ -100,15 +108,15 @@ async def call_tools(state: AgentState, runtime: Runtime[RunContext]) -> dict[st
     return {"call_log": call_log, "hard_failures": new_failures, "messages": tool_messages}
 
 
-# Check if the agent has exceeded its budget or encountered hard failures
+# Check for hard failures and the turn cap after each round of tool calls
 def check_budget(state: AgentState, runtime: Runtime[RunContext]) -> Literal["hard_failure_result", "judge_result", "next_executor_action"]:
-    """Check if the agent has exceeded its budget. Return 'judge_result' if budget is exceeded, otherwise 'next_executor_action'."""
+    """Return 'hard_failure_result' after a hard failure, 'judge_result' once the executor has used every turn, otherwise 'next_executor_action'."""
 
     if state["hard_failures"]:
         return "hard_failure_result"
 
-    # The budget counts HTTP requests, so lookups are free. The turn cap stops a model that only ever looks things up:
-    if len(state["call_log"]) >= runtime.context.max_http_calls or state["steps"] >= runtime.context.max_turns:
+    # The HTTP budget was checked before the tools ran. Lookups and waits don't count against it, so the turn cap stops a model that only ever looks things up:
+    if state["steps"] >= runtime.context.max_turns:
         return "judge_result"
 
     return "next_executor_action"
@@ -119,9 +127,10 @@ async def judge_result(state: AgentState, runtime: Runtime[RunContext]) -> dict[
 
     failures: list[str] = list(state["hard_failures"])
     call_log: list[HttpCall] = list(state["call_log"])
+    last_message = state["messages"][-1]
 
-    # Scenario reached call budget, return result:
-    if not isinstance(state["messages"][-1], AIMessage):
+    # The executor finished only if its last message asks for no more tools. Otherwise a budget stopped it, so the result is inconclusive:
+    if not isinstance(last_message, AIMessage) or last_message.tool_calls:
         reasoning = f"Stopped by the budget ({len(call_log)} of {runtime.context.max_http_calls} HTTP calls, {state['steps']} of {runtime.context.max_turns} turns) before the executor finished."
         return {"report": Report(result=JudgeReport(verdict="inconclusive", reasoning=reasoning, first_failure=""), call_log=call_log, hard_failures=failures, steps=state["steps"])}
 

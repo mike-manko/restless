@@ -82,6 +82,17 @@ def test_details_include_path_level_parameters(catalog: ApiCatalog) -> None:
     assert [parameter["name"] for parameter in details["parameters"]] == ["id"]
 
 
+def test_operation_parameter_wins_over_the_path_parameter_with_the_same_name() -> None:
+    path_parameter = {"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}
+    operation_parameter = {"name": "id", "in": "path", "required": True, "schema": {"type": "string", "format": "uuid"}}
+    spec: dict[str, Any] = {"paths": {"/orders/{id}": {"parameters": [path_parameter], "delete": {"parameters": [operation_parameter], "responses": {"204": {"description": "Deleted"}}}}}}
+    catalog = ApiCatalog({"orders": spec})
+
+    details = catalog.details(catalog.find("orders", "DELETE /orders/{id}"))
+
+    assert details["parameters"] == [operation_parameter]
+
+
 def test_recursive_schema_stops_with_a_note(catalog: ApiCatalog) -> None:
     details = catalog.details(catalog.find("orders", "GET /categories"))
 
@@ -103,3 +114,11 @@ def test_trim_keeps_one_json_body_and_collapses_dotnet_numbers() -> None:
     assert trimmed["requestBody"]["content"]["application/json"]["schema"]["properties"]["weight"] == {"type": "integer", "format": "int32", "nullable": True}
     # The input is untouched:
     assert "anyOf" in details["requestBody"]["content"]["application/json"]["schema"]["properties"]["weight"]
+
+
+def test_trim_keeps_an_any_of_that_is_a_real_choice() -> None:
+    # No pattern, so this isn't .NET's number-or-string shape: the model must see both options:
+    choice: dict[str, Any] = {"anyOf": [{"type": "string"}, {"type": "integer"}]}
+    details: dict[str, Any] = {"responses": {"200": {"content": {"application/json": {"schema": choice}}}}}
+
+    assert _trim_for_model(details) == details

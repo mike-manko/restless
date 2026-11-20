@@ -149,6 +149,9 @@ def _build_request(client: httpx.AsyncClient, method: str, path: str, headers: d
         request = client.build_request(method, path, headers=headers, json=body)
     except httpx.InvalidURL as exc:
         raise ToolException(f"Invalid path {path!r}: {exc}") from exc
+    except ValueError as exc:
+        # A header that isn't ASCII, or NaN in the body. Both are the model's to correct, so they must not end the run.
+        raise ToolException(f"Can't send this request: {exc}. Header names and values must be ASCII, and the body must be valid JSON.") from exc
 
     target, home = request.url, client.base_url
     if (target.scheme, target.host, target.port) != (home.scheme, home.host, home.port):

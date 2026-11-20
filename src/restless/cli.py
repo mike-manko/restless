@@ -1,9 +1,13 @@
 import asyncio
+import io
+import sys
 from pathlib import Path
 from typing import Annotated
 
 import typer
+from rich.console import Console
 
+from restless.banner import print_banner
 from restless.config import get_settings
 from restless.logging_setup import configure_logging
 from restless.model.report import Report
@@ -12,8 +16,9 @@ from restless.runner import run_scenario
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
-# Exit codes, so a script or CI step can tell the outcomes apart. A broken setup must never look like a failing API:
-_EXIT_CODES = {"pass": 0, "fail": 1, "inconclusive": 2}
+# Exit codes, so a script or CI step can tell the outcomes apart. A broken setup must never look like a failing API.
+# 2 is left out: Click exits with it for a usage error, like a mistyped scenario path or option:
+_EXIT_CODES = {"pass": 0, "fail": 1, "inconclusive": 4}
 _SETUP_ERROR = 3
 
 
@@ -22,6 +27,13 @@ def restless() -> None:
     """Run free-text API test scenarios with an LLM executor and an LLM judge."""
 
     # With a callback, Typer keeps "run" as a subcommand instead of making it the whole CLI, so more commands can be added later.
+    # The callback runs before every command. The banner goes to stderr, so stdout carries only the report:
+    print_banner(Console(stderr=True))
+
+    # Windows encodes redirected output in its ANSI code page (cp1252), which can't hold every character a scenario or the judge writes.
+    # A report that fails to print would exit with 1, the fail code, so stdout writes UTF-8:
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 @app.command()

@@ -102,6 +102,21 @@ async def test_requests_that_leave_the_api_are_refused(path: str) -> None:
     assert received == []
 
 
+async def test_redirect_is_shown_to_the_model_not_followed() -> None:
+    received: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        received.append(request)
+        return httpx.Response(302, headers={"Location": "https://login.test/sign-in"})
+
+    message = await call(make_tool(handler), api="orders", method="GET", path="/orders")
+
+    # A redirect could lead to another host, so the model gets the 302 and decides what to do with it:
+    assert message.artifact["status"] == 302
+    assert "location: https://login.test/sign-in" in message.text
+    assert len(received) == 1
+
+
 async def test_unknown_api_is_refused_with_the_available_names() -> None:
     message = await call(make_tool(ok), api="billing", method="GET", path="/invoices")
 
@@ -115,6 +130,23 @@ async def test_invalid_arguments_go_back_to_the_model() -> None:
     assert message.status == "error"
     assert "Invalid arguments" in message.text
     assert "method" in message.text
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        {"headers": {"X-City": "Zürich"}},  # header values are ASCII only
+        {"body": {"price": float("nan")}},  # JSON has no NaN
+    ],
+    ids=["non-ascii-header", "nan-in-body"],
+)
+async def test_request_httpx_cannot_build_goes_back_to_the_model(args: dict[str, Any]) -> None:
+    message = await call(make_tool(ok), api="orders", method="POST", path="/orders", **args)
+
+    # The model's mistake, so it gets a message it can correct instead of an exception that ends the run:
+    assert message.status == "error"
+    assert "Can't send this request" in message.text
+    assert message.artifact is None
 
 
 async def test_timeout_is_logged_as_a_call_without_a_response() -> None:
@@ -141,6 +173,28 @@ async def test_long_body_is_shortened_for_the_model_but_kept_whole_in_the_log() 
     assert "x" * 11 not in message.text
     assert "40 more characters not shown" in message.text
     assert message.artifact["body"] == report
+
+
+@pytest.mark.parametrize(
+    ("content_type", "content", "logged_body"),
+    [
+        # ASP.NET Core sends its errors as problem+json:
+        ("application/problem+json", b'{"title": "Not Found"}', {"title": "Not Found"}),
+        # Says JSON but isn't, so the judge sees the text that really came back:
+        ("application/json", b"<html>Bad gateway</html>", "<html>Bad gateway</html>"),
+        # Looks like JSON, but the API didn't say it is:
+        ("text/plain", b'{"id": 7}', '{"id": 7}'),
+        ("application/json", b"", None),
+    ],
+    ids=["problem-json", "broken-json", "plain-text", "empty"],
+)
+async def test_logged_body_is_parsed_only_when_the_api_says_it_is_json(content_type: str, content: bytes, logged_body: Any) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=content, headers={"Content-Type": content_type})
+
+    message = await call(make_tool(handler), api="orders", method="GET", path="/orders/7")
+
+    assert message.artifact["body"] == logged_body
 
 
 def test_traceparent_has_the_w3c_format() -> None:

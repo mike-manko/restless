@@ -60,7 +60,8 @@ async def run_scenario(scenario: Scenario, *, base_dir: Path, settings: Settings
             max_turns=settings.max_turns,
         )
 
-        # Each executor turn is two graph steps (executor, tools). LangGraph's default limit of 25 steps would stop a long run before our own budget does:
+        # Each executor turn is two graph steps (executor, tools), so this limit sits just above the turn cap, which ends every normal run first.
+        # It stops a routing mistake early: LangGraph's own default would let one loop for thousands of steps:
         recursion_limit = settings.max_turns * 2 + 10
         result = await build_graph().ainvoke({"scenario": scenario}, context=context, config={"recursion_limit": recursion_limit})
 
