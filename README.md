@@ -1,5 +1,5 @@
 ﻿<p align="center">
-  <img src="docs/assets/restless.gif" alt="restless animated banner" width="800">
+  <img src="docs/assets/restless.gif" alt="restless animated banner" width="250">
 </p>
 
 # restless
@@ -83,16 +83,16 @@ Here's the [included Petstore scenario](examples/petstore/pet-lifecycle.yaml):
 name: pet lifecycle
 
 apis:
-  petstore:
-    url: https://petstore3.swagger.io/api/v3
-    openapi: https://petstore3.swagger.io/api/v3/openapi.json
+    petstore:
+        url: https://petstore3.swagger.io/api/v3
+        openapi: https://petstore3.swagger.io/api/v3/openapi.json
 
 do: Add a new pet with status "available", then fetch it by its id, then change its status to "sold" and fetch it again.
 
 expect:
-  - adding the pet returns the pet with an id
-  - fetching it by id returns the same name and status "available"
-  - after the update, fetching it again shows status "sold"
+    - adding the pet returns the pet with an id
+    - fetching it by id returns the same name and status "available"
+    - after the update, fetching it again shows status "sold"
 ```
 
 `name`, `apis`, `do` and `expect` are required. Use `do` to describe the actions and `expect` for the things that must be true. Unknown keys are rejected, so a typo won't silently drop an expectation.
@@ -127,13 +127,13 @@ Run against test environments with disposable data. The executor can create, upd
 
 The terminal report lists the scenario name, verdict, HTTP-call count and executor-turn count, followed by numbered requests and the reasoning. When an expectation fails, it also includes the first failure. The banner goes to stderr; the report goes to stdout.
 
-| Exit code | Meaning |
-| --- | --- |
-| `0` | Pass: the judge found every expectation met. |
-| `1` | Fail: an expectation wasn't met, or a hard check found a timeout or HTTP 5xx response. |
-| `2` | Usage error: an unknown command or option, or a scenario file that doesn't exist. Nothing ran. |
-| `3` | Setup/runtime error: settings, scenario loading, specs or model calls prevented a verdict. |
-| `4` | Inconclusive: evidence is missing, or the executor reached a budget before finishing. |
+| Exit code | Meaning                                                                                        |
+| --------- | ---------------------------------------------------------------------------------------------- |
+| `0`       | Pass: the judge found every expectation met.                                                   |
+| `1`       | Fail: an expectation wasn't met, or a hard check found a timeout or HTTP 5xx response.         |
+| `2`       | Usage error: an unknown command or option, or a scenario file that doesn't exist. Nothing ran. |
+| `3`       | Setup/runtime error: settings, scenario loading, specs or model calls prevented a verdict.     |
+| `4`       | Inconclusive: evidence is missing, or the executor reached a budget before finishing.          |
 
 To save the terminal report:
 
@@ -147,17 +147,17 @@ This saves the text summary (UTF-8), not the full HTTP call log. Markdown report
 
 Settings load from environment variables and `.env` in the current working directory. Environment variables take precedence. The [example file](.env.example) lists the application settings; `.env` is ignored by Git.
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `OPENAI_API_KEY` | Required | Key for model calls. |
-| `EXECUTOR_MODEL` | Required | Model that chooses and executes API requests. |
-| `JUDGE_MODEL` | Required | Model that reviews the call log. |
-| `EXECUTOR_REASONING_EFFORT` | Unset | Optional effort for the executor model. |
-| `JUDGE_REASONING_EFFORT` | Unset | Optional effort for the judge model. |
-| `HTTP_TIMEOUT_SECONDS` | `30` | HTTP client timeout, in seconds. |
-| `MAX_HTTP_CALLS` | `20` | HTTP-call budget per scenario. |
-| `MAX_TURNS` | `40` | Executor-turn budget, including turns used for lookups and waits. |
-| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`. |
+| Variable                    | Default  | Purpose                                                           |
+| --------------------------- | -------- | ----------------------------------------------------------------- |
+| `OPENAI_API_KEY`            | Required | Key for model calls.                                              |
+| `EXECUTOR_MODEL`            | Required | Model that chooses and executes API requests.                     |
+| `JUDGE_MODEL`               | Required | Model that reviews the call log.                                  |
+| `EXECUTOR_REASONING_EFFORT` | Unset    | Optional effort for the executor model.                           |
+| `JUDGE_REASONING_EFFORT`    | Unset    | Optional effort for the judge model.                              |
+| `HTTP_TIMEOUT_SECONDS`      | `30`     | HTTP client timeout, in seconds.                                  |
+| `MAX_HTTP_CALLS`            | `20`     | HTTP-call budget per scenario.                                    |
+| `MAX_TURNS`                 | `40`     | Executor-turn budget, including turns used for lookups and waits. |
+| `LOG_LEVEL`                 | `INFO`   | `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`.                |
 
 The HTTP-call budget is checked before each request is sent, so a run never sends more than `MAX_HTTP_CALLS` requests; a run that needs more ends as inconclusive. These are execution limits, not a spending cap.
 
@@ -165,29 +165,29 @@ The HTTP-call budget is checked before each request is sent, so a run never send
 
 `uv sync --locked` installs the development tools too. Unit tests use mocks and don't need a live API or paid model calls.
 
-| Task | Command |
-| --- | --- |
-| Unit tests | `uv run pytest` |
-| Lint | `uv run ruff check .` |
-| Check formatting | `uv run ruff format --check .` |
-| Format | `uv run ruff format .` |
-| Type check | `uv run mypy` |
-| Install commit hooks | `uv run pre-commit install` |
+| Task                 | Command                             |
+| -------------------- | ----------------------------------- |
+| Unit tests           | `uv run pytest`                     |
+| Lint                 | `uv run ruff check .`               |
+| Check formatting     | `uv run ruff format --check .`      |
+| Format               | `uv run ruff format .`              |
+| Type check           | `uv run mypy`                       |
+| Install commit hooks | `uv run pre-commit install`         |
 | Run all commit hooks | `uv run pre-commit run --all-files` |
 
 The `integration` and `llm` pytest markers are configured and excluded by default. Their directories are placeholders for now. Once tests are added, run them with `uv run pytest -m integration` or `uv run pytest -m llm`.
 
-| Path | What's there |
-| --- | --- |
-| `src/restless/cli.py` | Commands and terminal output. |
-| `src/restless/runner.py` | Specs, clients, models and graph setup. |
-| `src/restless/actor/` | Executor, judge and prompts. |
-| `src/restless/graph/` | Execution loop, budgets and hard checks. |
-| `src/restless/openapi/` | Spec loading and operation lookup. |
-| `src/restless/tools/` | HTTP requests, endpoint details and waits. |
-| `src/restless/model/` | Scenario, API configuration and report types. |
-| `tests/unit/` | Unit tests. |
-| `examples/petstore/` | A scenario to try. |
+| Path                     | What's there                                  |
+| ------------------------ | --------------------------------------------- |
+| `src/restless/cli.py`    | Commands and terminal output.                 |
+| `src/restless/runner.py` | Specs, clients, models and graph setup.       |
+| `src/restless/actor/`    | Executor, judge and prompts.                  |
+| `src/restless/graph/`    | Execution loop, budgets and hard checks.      |
+| `src/restless/openapi/`  | Spec loading and operation lookup.            |
+| `src/restless/tools/`    | HTTP requests, endpoint details and waits.    |
+| `src/restless/model/`    | Scenario, API configuration and report types. |
+| `tests/unit/`            | Unit tests.                                   |
+| `examples/petstore/`     | A scenario to try.                            |
 
 ## Alpha limits and plans
 
