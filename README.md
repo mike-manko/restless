@@ -193,8 +193,6 @@ The `integration` and `llm` pytest markers are configured and excluded by defaul
 
 The current entry point is the CLI. There's no HTTP service or MCP server yet. Responses aren't validated against OpenAPI schemas, judge evidence isn't independently verified in code, and runs aren't persisted for replay. Waiting is a simple pause of up to 60 seconds per call; condition-based polling is still planned.
 
-The [v1 design notes](design.md) describe the intended direction, including schema validation, stronger evidence checks, Markdown reports, an MCP wrapper and scenario generation. They're planning notes, so some names and examples differ from the current implementation. Use this README for setup and scenario syntax.
-
 ## Contributing
 
 Bug reports and small, focused fixes are welcome. For larger changes, open an issue first so we can discuss the scope while the alpha is still changing.

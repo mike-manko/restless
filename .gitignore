@@ -185,3 +185,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 examples/assessments/
+
+
+design.md
