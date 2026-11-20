@@ -8,7 +8,7 @@ Requires [uv](https://docs.astral.sh/uv/).
 
 ```sh
 uv sync                    # create .venv and install locked packages
-cp .env.example .env       # then fill in OPENAI_API_KEY and OPENAI_MODEL
+cp .env.example .env       # then fill in OPENAI_API_KEY, EXECUTOR_MODEL and JUDGE_MODEL
 uv run pre-commit install  # run checks on every commit
 ```
 

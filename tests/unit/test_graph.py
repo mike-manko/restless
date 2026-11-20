@@ -10,13 +10,12 @@ from langchain_core.messages import AIMessage
 from langchain_core.messages.tool import tool_call
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
-from pydantic import SecretStr
 
 from restless.actor.executor import Executor
 from restless.actor.judge import Judge
-from restless.config import Settings
 from restless.graph.builder import build_graph
 from restless.graph.context import RunContext
+from restless.model.api_config import ApiConfig
 from restless.model.report import JudgeReport, Report
 from restless.model.scenario import Scenario
 from restless.openapi.catalog import ApiCatalog
@@ -25,7 +24,7 @@ from restless.tools.http_tool import HttpCall, create_http_tool
 from restless.tools.operation_tool import create_operation_tool
 
 SPEC: dict[str, Any] = {"paths": {"/orders": {"post": {"summary": "Create an order", "responses": {"201": {"description": "Created"}}}}}}
-SCENARIO = Scenario(name="create order", do="Create an order.", expect=["the API answers 201"])
+SCENARIO = Scenario(name="create order", apis={"orders": ApiConfig(url="https://orders.test", openapi="orders.json")}, do="Create an order.", expect=["the API answers 201"])
 
 
 class ScriptedModel(GenericFakeChatModel):
@@ -65,7 +64,6 @@ async def run(script: Iterator[AIMessage], status: int, *, max_http_calls: int =
     async with create_api_client("https://orders.test", traceparent="00-0-0-01", timeout_seconds=5, transport=transport) as client:
         tools = [create_http_tool({"orders": client}), create_operation_tool(ApiCatalog({"orders": SPEC}))]
         context = RunContext(
-            settings=Settings(_env_file=None, openai_api_key=SecretStr("sk-test"), openai_model="test"),
             tools={tool.name: tool for tool in tools},
             catalog=ApiCatalog({"orders": SPEC}),
             executor=Executor(ScriptedModel(messages=script), tools),

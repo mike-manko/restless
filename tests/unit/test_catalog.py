@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from restless.openapi.catalog import ApiCatalog, UnknownOperationError
+from restless.openapi.catalog import ApiCatalog, UnknownOperationError, _trim_for_model
 
 # A small spec in the shape Swashbuckle produces: schemas under components, a path-level parameter, and one operation without operationId.
 SPEC: dict[str, Any] = {
@@ -40,8 +40,8 @@ def catalog() -> ApiCatalog:
     return ApiCatalog({"orders": SPEC})
 
 
-def test_index_lists_every_operation_with_its_summary(catalog: ApiCatalog) -> None:
-    lines = catalog.index().splitlines()
+def test_list_operations_has_one_line_per_operation_with_its_summary(catalog: ApiCatalog) -> None:
+    lines = catalog.list_operations().splitlines()
 
     assert lines == [
         "orders  POST   /orders  Create an order",
@@ -90,3 +90,16 @@ def test_recursive_schema_stops_with_a_note(catalog: ApiCatalog) -> None:
 
     assert child["$ref"] == "#/components/schemas/Category"
     assert "Recursive" in child["note"]
+
+
+def test_trim_keeps_one_json_body_and_collapses_dotnet_numbers() -> None:
+    weight: dict[str, Any] = {"pattern": r"^-?(?:0|[1-9]\d*)$", "anyOf": [{"type": "integer"}, {"type": "string"}, {"enum": [None], "nullable": True}], "format": "int32", "nullable": True}
+    schema: dict[str, Any] = {"type": "object", "properties": {"weight": weight}}
+    details: dict[str, Any] = {"requestBody": {"content": {"text/json": {"schema": schema}, "application/json": {"schema": schema}, "application/*+json": {"schema": schema}}}}
+
+    trimmed = _trim_for_model(details)
+
+    assert list(trimmed["requestBody"]["content"]) == ["application/json"]
+    assert trimmed["requestBody"]["content"]["application/json"]["schema"]["properties"]["weight"] == {"type": "integer", "format": "int32", "nullable": True}
+    # The input is untouched:
+    assert "anyOf" in details["requestBody"]["content"]["application/json"]["schema"]["properties"]["weight"]

@@ -6,11 +6,9 @@ calls belong to are decided here, once per run.
 """
 
 import secrets
-import time
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 
 import httpx
-from azure.core.credentials import AccessToken, TokenCredential
 
 
 def new_traceparent() -> str:
@@ -25,44 +23,19 @@ def new_traceparent() -> str:
 
 
 class BearerTokenAuth(httpx.Auth):
-    """Put `Authorization: Bearer <token>` on every request.
+    """Put `Authorization: Bearer <token>` on every request, with a token given up front.
 
-    `get_token` returns a current access token. For Entra ID use create_entra_auth below.
-
-    Getting a token is a plain (sync) call, so the first fetch briefly blocks the
-    event loop. That's fine for a CLI that runs one scenario at a time.
+    There is no renewal: if the token expires during a run, the API answers 401 and the run shows it.
     """
 
-    def __init__(self, get_token: Callable[[], str]) -> None:
-        self._get_token = get_token
+    def __init__(self, token: str) -> None:
+        self._token = token
 
     def auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response]:
         # httpx runs auth as a generator: change the request, yield it, and httpx sends it.
         # Schemes like Digest look at the response that comes back; a bearer token doesn't need to.
-        request.headers["Authorization"] = f"Bearer {self._get_token()}"
+        request.headers["Authorization"] = f"Bearer {self._token}"
         yield request
-
-
-def create_entra_auth(credential: TokenCredential, scope: str) -> BearerTokenAuth:
-    """Bearer auth for one Entra ID scope, keeping the token until shortly before it expires.
-
-    Credentials backed by MSAL (client secret, managed identity) cache tokens themselves, but
-    AzureCliCredential, which DefaultAzureCredential often ends up using on a dev machine, starts
-    `az` for every call. That costs about a second per request, so the token is cached here.
-    """
-
-    token: AccessToken | None = None
-
-    def get_token() -> str:
-        nonlocal token
-
-        # Renew a minute early, so a token can't expire between this check and the API reading it:
-        if token is None or token.expires_on - 60 < time.time():
-            token = credential.get_token(scope)
-
-        return token.token
-
-    return BearerTokenAuth(get_token)
 
 
 def create_api_client(

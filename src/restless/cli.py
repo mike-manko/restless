@@ -6,15 +6,15 @@ import typer
 
 from restless.config import get_settings
 from restless.logging_setup import configure_logging
-from restless.model.api_config import SuiteConfig
 from restless.model.report import Report
 from restless.model.scenario import Scenario
 from restless.runner import run_scenario
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
-# Exit codes, so a script or CI step can tell the outcomes apart:
+# Exit codes, so a script or CI step can tell the outcomes apart. A broken setup must never look like a failing API:
 _EXIT_CODES = {"pass": 0, "fail": 1, "inconclusive": 2}
+_SETUP_ERROR = 3
 
 
 @app.callback()
@@ -26,18 +26,23 @@ def restless() -> None:
 
 @app.command()
 def run(
-    scenario: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="Scenario YAML file.")],
-    config: Annotated[Path, typer.Option("--config", "-c", exists=True, dir_okay=False, help="API config YAML file.")] = Path("apis.yaml"),
+    scenario: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="Scenario YAML file, with its APIs.")],
+    # envvar: the token can come from RESTLESS_TOKEN instead, so it doesn't end up in the shell history:
+    token: Annotated[str | None, typer.Option("--token", "-t", envvar="RESTLESS_TOKEN", help="Bearer token for every API. Overrides the tokens in the scenario file.")] = None,
 ) -> None:
     """Run one scenario and print the verdict."""
 
-    settings = get_settings()
-    configure_logging(settings.log_level)
+    # Everything that isn't the API's behaviour (settings, scenario file, specs, OpenAI) is a setup error, with its own exit code:
+    try:
+        settings = get_settings()
+        configure_logging(settings.log_level)
 
-    loaded_scenario = Scenario.from_file(scenario)
-    suite_config = SuiteConfig.from_file(config)
+        loaded_scenario = Scenario.from_file(scenario)
+        report = asyncio.run(run_scenario(loaded_scenario, base_dir=scenario.parent, settings=settings, token=token))
+    except Exception as e:
+        typer.echo(f"Setup error, the test did not run to a verdict: {type(e).__name__}: {e}", err=True)
+        raise typer.Exit(_SETUP_ERROR) from e
 
-    report = asyncio.run(run_scenario(loaded_scenario, suite_config, config_dir=config.parent, settings=settings))
     _print_report(loaded_scenario, report)
 
     raise typer.Exit(_EXIT_CODES[report.result.verdict])

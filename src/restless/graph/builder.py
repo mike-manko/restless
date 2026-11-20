@@ -22,7 +22,6 @@ def build_graph() -> RunGraph:
     builder.add_edge(START, "load_scenario")
     builder.add_edge("load_scenario", "next_executor_action")
 
-    # The routers return node names. LangGraph reads the possible targets from their Literal return types:
     builder.add_conditional_edges("next_executor_action", has_tool_calls)
     builder.add_conditional_edges("call_tools", check_budget)
 

@@ -1,5 +1,13 @@
 name: pet lifecycle
+
+# The public Swagger Petstore: no token needed.
+apis:
+  petstore:
+    url: https://petstore3.swagger.io/api/v3
+    openapi: https://petstore3.swagger.io/api/v3/openapi.json
+
 do: Add a new pet with status "available", then fetch it by its id, then change its status to "sold" and fetch it again.
+
 expect:
   - adding the pet returns the pet with an id
   - fetching it by id returns the same name and status "available"

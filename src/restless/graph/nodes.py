@@ -1,6 +1,6 @@
 import operator
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal, TypedDict, cast
+from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.graph.message import add_messages
@@ -32,7 +32,7 @@ class GraphInput(TypedDict):
 def load_scenario(state: AgentState, runtime: Runtime[RunContext]) -> dict[str, Any]:
     """Build the executor's task from the scenario and the catalog's operation list."""
 
-    task = build_executor_task(state["scenario"].to_prompt(), runtime.context.catalog.index(), runtime.context.max_http_calls)
+    task = build_executor_task(state["scenario"].to_prompt(), runtime.context.catalog.list_operations(), runtime.context.max_http_calls)
 
     return {"messages": [HumanMessage(content=task)], "call_log": [], "hard_failures": [], "steps": 0}
 
@@ -53,10 +53,11 @@ async def next_executor_action(state: AgentState, runtime: Runtime[RunContext]) 
 
 # Route based on whether the last AI message has tool calls
 def has_tool_calls(state: AgentState, runtime: Runtime[RunContext]) -> Literal["call_tools", "judge_result"]:
-    """Determine if the last AI message has tool calls. Returns 'judge' if no tool calls or no AI message, 'tools' otherwise."""
+    """Return 'call_tools' if the executor's last message asks for tools, otherwise 'judge_result': no tool call means it finished."""
+
     last_message = state["messages"][-1] if state["messages"] else None
 
-    if not last_message or not isinstance(last_message, AIMessage):
+    if not isinstance(last_message, AIMessage):
         return "judge_result"
 
     if not last_message.tool_calls:
@@ -65,15 +66,14 @@ def has_tool_calls(state: AgentState, runtime: Runtime[RunContext]) -> Literal["
     return "call_tools"
 
 
-# Call the HTTP tool based on the last AI message's tool calls
+# Run the tools the last AI message asked for (http_request, get_operation, wait)
 async def call_tools(state: AgentState, runtime: Runtime[RunContext]) -> dict[str, Any]:
-    """Run one HTTP call turn: execute the HTTP request based on the state and append the result to the state."""
+    """Run every tool call in the executor's last message. HTTP calls go to the call log and through the hard checks."""
 
     last_message = state["messages"][-1] if state["messages"] else None
-    last_message = cast(AIMessage, last_message)
 
-    # Ensure the last message is an AIMessage before proceeding with the HTTP call.
-    if not last_message or not isinstance(last_message, AIMessage):
+    # isinstance also narrows the type for mypy, so no cast is needed after it:
+    if not isinstance(last_message, AIMessage):
         raise TypeError("Last message must be an AIMessage")
 
     call_log: list[HttpCall] = []
@@ -81,17 +81,17 @@ async def call_tools(state: AgentState, runtime: Runtime[RunContext]) -> dict[st
     tool_messages: list[ToolMessage] = []
 
     # Process each tool call in the last AI message:
-    for tool_message in last_message.tool_calls:
-        tool = runtime.context.tools.get(tool_message["name"])
+    for tool_call in last_message.tool_calls:
+        tool = runtime.context.tools.get(tool_call["name"])
 
-        if not tool or tool is None:
-            tool_messages.append(ToolMessage(content=f"Unknown tool {tool_message['name']!r}.", tool_call_id=tool_message["id"], status="error"))
+        if tool is None:
+            tool_messages.append(ToolMessage(content=f"Unknown tool {tool_call['name']!r}.", tool_call_id=tool_call["id"], status="error"))
             continue
 
-        message = await tool.ainvoke(tool_message)
+        message = await tool.ainvoke(tool_call)
         tool_messages.append(message)
 
-        # None means the model's mistake (bad args, foreign URL), not a call
+        # Only http_request returns an artifact. None means a lookup, a wait or the model's mistake (bad args, foreign URL), not an API call:
         if message.artifact is not None:
             call_log.append(message.artifact)
             if (reason := hard_check(message.artifact)) is not None:
@@ -143,9 +143,9 @@ def hard_failure_result(state: AgentState, runtime: Runtime[RunContext]) -> dict
                 reasoning=f"Stopped by the hard checks before the judge ran: {'; '.join(state['hard_failures'])}",
                 first_failure=state["hard_failures"][0],
             ),
-            call_log=state.get("call_log", []),
-            hard_failures=state.get("hard_failures", []),
-            steps=state.get("steps", 0),
+            call_log=state["call_log"],
+            hard_failures=state["hard_failures"],
+            steps=state["steps"],
         )
     }
 

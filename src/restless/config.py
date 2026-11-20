@@ -10,6 +10,12 @@ from typing import Annotated, Literal
 from pydantic import Field, SecretStr, StringConstraints
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+ModelName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+# OpenAI's reasoning_effort values. Which ones a model accepts depends on the model, and a model without
+# reasoning rejects the parameter entirely, so None (the default) means "don't send it":
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -30,7 +36,13 @@ class Settings(BaseSettings):
     # Required fields have no default, so a missing value fails at startup, not on first use.
     # SecretStr hides the value in repr() and logs; call .get_secret_value() where it is needed.
     openai_api_key: SecretStr
-    openai_model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+    # The executor (the caller) and the judge get separate models: the executor makes many short tool-calling turns,
+    # the judge makes one long careful read of the call log, so they often deserve different models and effort:
+    executor_model: ModelName = Field(description="Model that runs the scenario and calls the tools.")
+    executor_reasoning_effort: ReasoningEffort | None = Field(default=None, description="Reasoning effort for the executor. Leave empty for models without reasoning.")
+    judge_model: ModelName = Field(description="Model that judges the call log.")
+    judge_reasoning_effort: ReasoningEffort | None = Field(default=None, description="Reasoning effort for the judge. Leave empty for models without reasoning.")
 
 
 @lru_cache

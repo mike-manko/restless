@@ -1,3 +1,4 @@
+import copy
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from difflib import get_close_matches
@@ -45,8 +46,8 @@ class ApiCatalog:
                 if operation.operation_id:
                     self._aliases[(api, operation.operation_id)] = operation.key
 
-    def index(self) -> str:
-        """One line per operation, for the executor's first message. Cheap enough to send the whole list."""
+    def list_operations(self) -> str:
+        """Every operation of every API as text, one line each: API, method, path and summary."""
 
         lines: list[str] = [f"{op.api}  {op.method:<6} {op.path}  {op.summary}".rstrip() for op in self._operations.values()]
 
@@ -94,14 +95,48 @@ class ApiCatalog:
         # Leave out what the operation doesn't have, rather than sending "parameters": [] to the model:
         present = {key: value for key, value in details.items() if value}
 
-        return trim_for_model(present)
+        return _trim_for_model(present)
 
 
-def trim_for_model(details: dict[str, Any]) -> dict[str, Any]:
+def _trim_for_model(details: dict[str, Any]) -> dict[str, Any]:
     """Remove the parts of a resolved operation the executor doesn't need, so each lookup costs fewer tokens."""
 
-    # TODO(human): decide what the executor doesn't need and drop it here (see the Learn by Doing request).
-    return details
+    # Work on a copy, so trimming can never change what the caller passed in:
+    trimmed: dict[str, Any] = copy.deepcopy(details)
+
+    # Bodies are listed once per content type (application/json, text/json, application/*+json). http_request only sends and reads JSON, so keep one:
+    bodies: list[dict[str, Any]] = [trimmed.get("requestBody", {}), *trimmed.get("responses", {}).values()]
+    for body in bodies:
+        content: dict[str, Any] = body.get("content", {})
+        json_names: list[str] = sorted((name for name in content if "json" in name), key=lambda name: name != "application/json")
+        if json_names:
+            body["content"] = {json_names[0]: content[json_names[0]]}
+
+    # .NET's web JSON defaults accept numbers as strings too, so every number is documented as pattern + anyOf[number, string].
+    # Walk the whole tree with a stack and turn those back into plain numbers:
+    stack: list[Any] = [trimmed]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, list):
+            stack.extend(node)
+            continue
+
+        if not isinstance(node, dict):
+            continue
+
+        types: list[Any] = [variant.get("type") for variant in node.get("anyOf", []) if isinstance(variant, dict)]
+        number_type = next((kind for kind in types if kind in ("integer", "number")), None)
+
+        # Only the .NET shape: a pattern, a number type and a string type. Any other anyOf is a real choice the model must see.
+        # "nullable" stays, because .NET puts it on the outer object too:
+        if "pattern" in node and number_type and "string" in types:
+            node.pop("pattern")
+            node.pop("anyOf")
+            node["type"] = number_type
+
+        stack.extend(node.values())
+
+    return trimmed
 
 
 def _read_operations(api: str, spec: Mapping[str, Any]) -> Iterator[Operation]:

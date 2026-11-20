@@ -1,14 +1,14 @@
 from pathlib import Path
-from typing import Annotated, Self
+from typing import Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field
 
-NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+from restless.model.api_config import ApiConfig, NonEmptyStr
 
 
 class Scenario(BaseModel):
-    """Scenario class describing one test: what to do and what must be true afterwards, mostly in free text."""
+    """Scenario class describing one complete test in one file: the APIs it calls, what to do and what must be true afterwards."""
 
     # Unknown keys are an error, so a misspelled "expect:" fails instead of running a test with no expectations.
     # validate_by_name lets code and tests write as_user=..., while the YAML file uses "as":
@@ -16,7 +16,7 @@ class Scenario(BaseModel):
 
     name: NonEmptyStr = Field(description="Short name of the test, shown in the report.")
     as_user: NonEmptyStr | None = Field(default=None, alias="as", description="Identity to run as. Not used yet: every API gets the one configured identity.")
-    apis: list[str] | None = Field(default=None, description="Configured APIs this scenario uses. Leave out to use all of them.")
+    apis: dict[str, ApiConfig] = Field(min_length=1, description="API name -> where it lives, its spec and its token. Tools refer to APIs by these names.")
     do: NonEmptyStr = Field(description="What the executor should do, in plain language.")
     expect: list[NonEmptyStr] = Field(min_length=1, description="What must be true afterwards, one expectation per item.")
 

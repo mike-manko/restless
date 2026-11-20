@@ -16,7 +16,8 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_env_var_overrides_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    monkeypatch.setenv("OPENAI_MODEL", "test-model")
+    monkeypatch.setenv("EXECUTOR_MODEL", "test-model")
+    monkeypatch.setenv("JUDGE_MODEL", "test-model")
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
 
     # _env_file=None ignores the real .env, so the test only sees what it set.
@@ -31,12 +32,13 @@ def test_missing_required_values_fail() -> None:
         Settings(_env_file=None)
 
     missing = {error["loc"][0] for error in exc_info.value.errors()}
-    assert missing == {"openai_api_key", "openai_model"}
+    assert missing == {"openai_api_key", "executor_model", "judge_model"}
 
 
 def test_api_key_hidden_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "sk-very-secret")
-    monkeypatch.setenv("OPENAI_MODEL", "test-model")
+    monkeypatch.setenv("EXECUTOR_MODEL", "test-model")
+    monkeypatch.setenv("JUDGE_MODEL", "test-model")
 
     settings = Settings(_env_file=None)
 

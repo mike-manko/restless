@@ -24,7 +24,7 @@ def make_tool(handler: Handler, **options: Any) -> BaseTool:
         "https://orders.test/api",
         traceparent=TRACEPARENT,
         timeout_seconds=5,
-        auth=BearerTokenAuth(lambda: "secret-token"),
+        auth=BearerTokenAuth("secret-token"),
         transport=httpx.MockTransport(handler),
     )
     return create_http_tool({"orders": client}, **options)
