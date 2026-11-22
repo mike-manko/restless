@@ -41,7 +41,7 @@ async def test_judge_sees_only_the_scenario_and_the_call_log() -> None:
     model = ScriptedModel(messages=iter([judge_reply("pass")]))
     calls = [http_call(method="POST", status=201)]
 
-    report = await Judge(model).report("name: create order", calls)
+    report, _ = await Judge(model).report("name: create order", calls)
 
     assert report.verdict == "pass"
     # Never the executor's messages: the judge judges what the APIs did, not what anyone said about it:
@@ -61,9 +61,28 @@ async def test_judge_asks_openai_for_strict_json_and_reads_the_verdict_from_it()
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as openai_client:
         model = ChatOpenAI(model_name="judge-model", openai_api_key=SecretStr("sk-test"), http_async_client=openai_client)
 
-        report = await Judge(model).report("name: create order", [http_call(method="POST", status=201)])
+        report, _ = await Judge(model).report("name: create order", [http_call(method="POST", status=201)])
 
     assert report.verdict == "pass"
     # Strict mode makes OpenAI's answer match the schema exactly, so a missing or misspelled verdict can't come back:
     assert sent[0]["response_format"]["type"] == "json_schema"
     assert sent[0]["response_format"]["json_schema"]["strict"] is True
+
+
+async def test_judge_returns_its_token_usage_with_the_report() -> None:
+    # A fake OpenAI endpoint that answers with a verdict and the usage block OpenAI bills by, 1,024 input tokens read from the prompt cache:
+    answer = {"role": "assistant", "content": json.dumps({"reasoning": "Call 0 returned 201.", "first_failure": "", "verdict": "pass"})}
+    usage = {"prompt_tokens": 1200, "completion_tokens": 80, "total_tokens": 1280, "prompt_tokens_details": {"cached_tokens": 1024}}
+    completion = {"id": "chatcmpl-1", "object": "chat.completion", "created": 0, "model": "judge-model", "choices": [{"index": 0, "finish_reason": "stop", "message": answer}], "usage": usage}
+
+    # The real OpenAI model class, talking to the fake endpoint:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=completion))) as openai_client:
+        model = ChatOpenAI(model_name="judge-model", openai_api_key=SecretStr("sk-test"), http_async_client=openai_client)
+
+        report, judge_usage = await Judge(model).report("name: create order", [http_call(method="POST", status=201)])
+
+    assert report.verdict == "pass"
+    # The judge's own tokens come back with its verdict, the cached part counted inside the input:
+    assert judge_usage is not None
+    assert (judge_usage["input_tokens"], judge_usage["output_tokens"]) == (1200, 80)
+    assert judge_usage.get("input_token_details", {}).get("cache_read") == 1024

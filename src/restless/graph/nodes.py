@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages.ai import UsageMetadata, add_usage
 from langgraph.graph.message import add_messages
 from langgraph.runtime import Runtime
 
@@ -20,6 +21,7 @@ class AgentState(TypedDict):
     hard_failures: Annotated[list[str], operator.add]
     steps: int
     report: Report
+    executor_usage: Annotated[UsageMetadata, add_usage]
 
 
 class GraphInput(TypedDict):
@@ -34,7 +36,7 @@ def load_scenario(state: AgentState, runtime: Runtime[RunContext]) -> dict[str, 
 
     task = build_executor_task(state["scenario"].to_prompt(), runtime.context.catalog.list_operations(), runtime.context.max_http_calls)
 
-    return {"messages": [HumanMessage(content=task)], "call_log": [], "hard_failures": [], "steps": 0}
+    return {"messages": [HumanMessage(content=task)], "call_log": [], "hard_failures": [], "steps": 0, "executor_usage": UsageMetadata(input_tokens=0, output_tokens=0, total_tokens=0)}
 
 
 # LLM selects api method to execute based on scenario, returns
@@ -48,7 +50,7 @@ async def next_executor_action(state: AgentState, runtime: Runtime[RunContext]) 
     ai_message = await runtime.context.executor.step(messages)
     steps += 1
 
-    return {"messages": [ai_message], "steps": steps}
+    return {"messages": [ai_message], "steps": steps, "executor_usage": ai_message.usage_metadata}
 
 
 # Route the executor's reply: run the tools it asked for, or end the run
@@ -132,17 +134,21 @@ async def judge_result(state: AgentState, runtime: Runtime[RunContext]) -> dict[
     # The executor finished only if its last message asks for no more tools. Otherwise a budget stopped it, so the result is inconclusive:
     if not isinstance(last_message, AIMessage) or last_message.tool_calls:
         reasoning = f"Stopped by the budget ({len(call_log)} of {runtime.context.max_http_calls} HTTP calls, {state['steps']} of {runtime.context.max_turns} turns) before the executor finished."
-        return {"report": Report(result=JudgeReport(verdict="inconclusive", reasoning=reasoning, first_failure=""), call_log=call_log, hard_failures=failures, steps=state["steps"])}
+        result = JudgeReport(verdict="inconclusive", reasoning=reasoning, first_failure="")
+
+        # No judge ran, so only the executor used tokens:
+        return {"report": Report(result=result, call_log=call_log, hard_failures=failures, steps=state["steps"], executor_usage=state["executor_usage"], judge_usage=None)}
 
     # Request a judge report for the current scenario and call log:
-    judge_report = await runtime.context.judge.report(state["scenario"].to_prompt(), call_log)
-    report = Report(result=judge_report, call_log=call_log, hard_failures=failures, steps=state["steps"])
+    judge_report, judge_usage = await runtime.context.judge.report(state["scenario"].to_prompt(), call_log)
+    report = Report(result=judge_report, call_log=call_log, hard_failures=failures, steps=state["steps"], executor_usage=state["executor_usage"], judge_usage=judge_usage)
 
     return {"report": report}
 
 
 def hard_failure_result(state: AgentState, runtime: Runtime[RunContext]) -> dict[str, Any]:
     """Return a report indicating a hard failure occurred."""
+
     return {
         "report": Report(
             # The hard checks failed the test before the judge ran. List every reason, not only the first:
@@ -155,6 +161,9 @@ def hard_failure_result(state: AgentState, runtime: Runtime[RunContext]) -> dict
             call_log=state["call_log"],
             hard_failures=state["hard_failures"],
             steps=state["steps"],
+            # No judge ran, so only the executor used tokens:
+            executor_usage=state["executor_usage"],
+            judge_usage=None,
         )
     }
 

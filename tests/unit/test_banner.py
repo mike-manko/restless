@@ -1,8 +1,10 @@
 import io
+from importlib import metadata
 
+import pytest
 from rich.console import Console
 
-from restless.banner import _TITLE_BOTTOM_ROW, print_banner
+from restless.banner import _TITLE_BOTTOM_ROW, _display_version, print_banner
 
 # Rows of the RESTLESS title, to find where the title landed:
 TITLE_ROW = "/ _, _/ / /___"
@@ -36,6 +38,25 @@ def test_title_ends_on_the_row_where_the_right_ear_lime_ends() -> None:
     title_bottom = next(index for index, line in enumerate(lines) if TITLE_LAST_ROW in line)
 
     assert title_bottom == _TITLE_BOTTOM_ROW
+
+
+def test_version_and_project_address_sit_under_the_title() -> None:
+    lines = banner_lines(width=160)
+
+    title_bottom = next(index for index, line in enumerate(lines) if TITLE_LAST_ROW in line)
+
+    # A blank line under the title, then the installed version, then the address:
+    assert _display_version(metadata.version("restless")) in lines[title_bottom + 2]
+    assert "https://github.com/mike-manko/restless" in lines[title_bottom + 3]
+
+
+@pytest.mark.parametrize(
+    ("pep440", "shown"),
+    [("1.0.0a0", "v1.0.0-alpha"), ("1.0.0b2", "v1.0.0-beta.2"), ("2.1.0rc1", "v2.1.0-rc.1"), ("1.0.0", "v1.0.0"), ("1.0.0.dev1", "v1.0.0.dev1")],
+    ids=["first-alpha", "later-beta", "release-candidate", "release", "unhandled-form"],
+)
+def test_version_is_shown_the_way_semver_writes_pre_releases(pep440: str, shown: str) -> None:
+    assert _display_version(pep440) == shown
 
 
 def test_narrow_terminal_stacks_them_instead_of_wrapping() -> None:

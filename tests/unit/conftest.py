@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from restless.config import Settings
+from restless.settings import Settings
 
 # Unit tests never send traces to LangSmith, even when .env or the shell switches tracing on.
 # langsmith caches the variable the first time it reads it, so set it here, before any test runs:
@@ -20,3 +20,7 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name.upper(), raising=False)
 
     monkeypatch.delenv("RESTLESS_TOKEN", raising=False)
+
+    # Rich reads these to force colour on or off, which would change what the report tests see:
+    for name in ("FORCE_COLOR", "NO_COLOR"):
+        monkeypatch.delenv(name, raising=False)

@@ -1,17 +1,20 @@
 """Tests for the restless command. run_scenario is replaced by a fake, so no spec, API or model is needed."""
 
+import io
 from pathlib import Path
 from typing import Any, Literal
 
 import pytest
+from langchain_core.messages.ai import UsageMetadata
 from pydantic import SecretStr
+from rich.console import Console
 from typer.testing import CliRunner, Result
 
-from restless.cli import app
-from restless.config import Settings
+from restless.cli import _print_report, app
 from restless.model.report import JudgeReport, Report
 from restless.model.scenario import Scenario
 from restless.openapi.loader import SpecLoadError
+from restless.settings import Settings
 from restless.tools.http_tool import HttpCall
 from tests.fakes import http_call
 
@@ -48,8 +51,10 @@ def finished_run(verdict: Literal["pass", "fail", "inconclusive"], *, calls: lis
     """The report of a run that reached a verdict."""
 
     result = JudgeReport(reasoning="The order was created but never fetched.", first_failure=first_failure, verdict=verdict)
+    executor_usage = UsageMetadata(input_tokens=48210, output_tokens=2950, total_tokens=51160, input_token_details={"cache_read": 41600})
+    judge_usage = UsageMetadata(input_tokens=9800, output_tokens=1200, total_tokens=11000)
 
-    return Report(result=result, call_log=calls or [], hard_failures=[], steps=3)
+    return Report(result=result, call_log=calls or [], hard_failures=[], steps=3, executor_usage=executor_usage, judge_usage=judge_usage)
 
 
 def replace_run(monkeypatch: pytest.MonkeyPatch, report: Report) -> list[dict[str, Any]]:
@@ -80,6 +85,22 @@ def test_verdict_becomes_the_exit_code(monkeypatch: pytest.MonkeyPatch, scenario
     result = run_command("run", str(scenario_file))
 
     assert result.exit_code == exit_code
+
+
+@pytest.mark.parametrize(
+    ("verdict", "colour"),
+    [("pass", "\x1b[38;2;170;240;40m"), ("fail", "\x1b[31m"), ("inconclusive", "\x1b[33m")],
+    ids=["pass-in-goblin-lime", "fail-in-red", "inconclusive-in-yellow"],
+)
+def test_verdict_is_coloured_in_a_terminal(scenario_file: Path, verdict: Literal["pass", "fail", "inconclusive"], colour: str) -> None:
+    # A terminal that shows full colour, as Rich sees one with VT mode on:
+    output = io.StringIO()
+    console = Console(file=output, force_terminal=True, color_system="truecolor", legacy_windows=False, soft_wrap=True)
+
+    _print_report(console, Scenario.from_file(scenario_file), finished_run(verdict))
+
+    # Only the verdict takes the colour; the name and the counts stay plain. The goblin's lime, #aaf028, is 170, 240, 40 in RGB:
+    assert f"create order: {colour}{verdict.upper()}\x1b[0m  (0 HTTP calls, 3 turns)" in output.getvalue()
 
 
 def test_report_lists_every_call_the_way_the_judge_numbers_them(monkeypatch: pytest.MonkeyPatch, scenario_file: Path) -> None:

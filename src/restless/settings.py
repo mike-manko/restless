@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     http_timeout_seconds: float = Field(default=30.0, gt=0, allow_inf_nan=False)
     max_http_calls: int = Field(default=20, gt=0, description="HTTP requests the executor may send in one run.")
-    max_turns: int = Field(default=40, gt=0, description="Executor turns in one run, operation lookups included.")
+    default_max_turns: int = Field(default=40, gt=0, description="Executor turns in one run, operation lookups included. A scenario's max_turns overrides it.")
 
     # Required fields have no default, so a missing value fails at startup, not on first use.
     # SecretStr hides the value in repr() and logs; call .get_secret_value() where it is needed.

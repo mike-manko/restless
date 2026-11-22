@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from restless.config import Settings
+from restless.settings import Settings
 
 # The settings template the README says to copy to .env:
 ENV_EXAMPLE = Path(__file__).parents[2] / ".env.example"

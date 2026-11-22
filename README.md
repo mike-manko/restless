@@ -101,6 +101,8 @@ Each API needs a `url` and an `openapi` source. Local spec paths are relative to
 
 The optional `as` field is accepted but doesn't switch identities yet.
 
+The optional `max_turns` gives the scenario its own executor-turn budget in place of `DEFAULT_MAX_TURNS`. Raise it for a long flow, or lower it to stop a short one early.
+
 ### Authentication
 
 For a single token shared by all APIs, set `RESTLESS_TOKEN` in your shell before running the command:
@@ -125,7 +127,7 @@ Run against test environments with disposable data. The executor can create, upd
 
 ## Results and exit codes
 
-The terminal report lists the scenario name, verdict, HTTP-call count and executor-turn count, followed by numbered requests and the reasoning. When an expectation fails, it also includes the first failure. The banner goes to stderr; the report goes to stdout.
+The terminal report lists the scenario name, verdict, HTTP-call count and executor-turn count, followed by numbered requests and the reasoning. When an expectation fails, it also includes the first failure. It ends with the tokens the executor and the judge used. The banner goes to stderr; the report goes to stdout.
 
 | Exit code | Meaning                                                                                        |
 | --------- | ---------------------------------------------------------------------------------------------- |
@@ -156,10 +158,10 @@ Settings load from environment variables and `.env` in the current working direc
 | `JUDGE_REASONING_EFFORT`    | Unset    | Optional effort for the judge model.                              |
 | `HTTP_TIMEOUT_SECONDS`      | `30`     | HTTP client timeout, in seconds.                                  |
 | `MAX_HTTP_CALLS`            | `20`     | HTTP-call budget per scenario.                                    |
-| `MAX_TURNS`                 | `40`     | Executor-turn budget, including turns used for lookups and waits. |
+| `DEFAULT_MAX_TURNS`         | `40`     | Executor-turn budget, including turns used for lookups and waits. |
 | `LOG_LEVEL`                 | `INFO`   | `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`.                |
 
-The HTTP-call budget is checked before each request is sent, so a run never sends more than `MAX_HTTP_CALLS` requests; a run that needs more ends as inconclusive. These are execution limits, not a spending cap.
+The HTTP-call budget is checked before each request is sent, so a run never sends more than `MAX_HTTP_CALLS` requests; a run that needs more ends as inconclusive. `DEFAULT_MAX_TURNS` applies to every scenario that doesn't set its own `max_turns`. These are execution limits, not a spending cap.
 
 ## Development
 

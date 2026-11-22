@@ -7,11 +7,11 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import SecretStr, ValidationError
 
-from restless.config import Settings
 from restless.model.api_config import ApiConfig
 from restless.model.report import JudgeReport, Report
 from restless.model.scenario import Scenario
 from restless.runner import _create_auths, _create_model, run_scenario
+from restless.settings import Settings
 from restless.tools.api_clients import create_api_client
 from tests.fakes import ScriptedModel, judge_reply, lookup, request
 
@@ -61,7 +61,9 @@ async def run_with_fakes(script: list[AIMessage], *, tmp_path: Path, monkeypatch
     models = {"executor-model": ScriptedModel(messages=iter(script)), "judge-model": ScriptedModel(messages=iter([judge_reply("pass")]))}
     monkeypatch.setattr("restless.runner._create_model", lambda name, reasoning_effort, settings: models[name])
 
-    settings = Settings(_env_file=None, openai_api_key=SecretStr("sk-test"), executor_model="executor-model", judge_model="judge-model", http_timeout_seconds=5, max_http_calls=5, max_turns=max_turns)
+    settings = Settings(
+        _env_file=None, openai_api_key=SecretStr("sk-test"), executor_model="executor-model", judge_model="judge-model", http_timeout_seconds=5, max_http_calls=5, default_max_turns=max_turns
+    )
     report = await run_scenario(SCENARIO, base_dir=tmp_path, settings=settings, token=token)
 
     return report, received

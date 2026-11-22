@@ -7,7 +7,6 @@ from langchain_openai import ChatOpenAI
 
 from restless.actor.executor import Executor
 from restless.actor.judge import Judge
-from restless.config import ReasoningEffort, Settings
 from restless.graph.builder import build_graph
 from restless.graph.context import RunContext
 from restless.model.api_config import ApiConfig
@@ -15,6 +14,7 @@ from restless.model.report import Report
 from restless.model.scenario import Scenario
 from restless.openapi.catalog import ApiCatalog
 from restless.openapi.loader import load_specs
+from restless.settings import ReasoningEffort, Settings
 from restless.tools.api_clients import BearerTokenAuth, create_api_client, new_traceparent
 from restless.tools.http_tool import create_http_tool
 from restless.tools.operation_tool import create_operation_tool
@@ -57,12 +57,12 @@ async def run_scenario(scenario: Scenario, *, base_dir: Path, settings: Settings
             executor=Executor(executor_model, tools),
             judge=Judge(judge_model),
             max_http_calls=settings.max_http_calls,
-            max_turns=settings.max_turns,
+            max_turns=scenario.max_turns if scenario.max_turns is not None else settings.default_max_turns,
         )
 
         # Each executor turn is two graph steps (executor, tools), so this limit sits just above the turn cap, which ends every normal run first.
         # It stops a routing mistake early: LangGraph's own default would let one loop for thousands of steps:
-        recursion_limit = settings.max_turns * 2 + 10
+        recursion_limit = context.max_turns * 2 + 10
         result = await build_graph().ainvoke({"scenario": scenario}, context=context, config={"recursion_limit": recursion_limit})
 
     report: Report = result["report"]

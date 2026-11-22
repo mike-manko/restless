@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
+from langchain_core.messages.ai import UsageMetadata
 from pydantic import BaseModel, Field
 
 from restless.tools.http_tool import HttpCall
@@ -24,3 +25,5 @@ class Report:
     call_log: list[HttpCall]
     hard_failures: list[str]
     steps: int
+    executor_usage: UsageMetadata  # every executor turn's tokens, added up
+    judge_usage: UsageMetadata | None  # None when no judge ran (hard failure, budget stop) or its provider reports no usage

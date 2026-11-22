@@ -19,6 +19,7 @@ class Scenario(BaseModel):
     apis: dict[str, ApiConfig] = Field(min_length=1, description="API name -> where it lives, its spec and its token. Tools refer to APIs by these names.")
     do: NonEmptyStr = Field(description="What the executor should do, in plain language.")
     expect: list[NonEmptyStr] = Field(min_length=1, description="What must be true afterwards, one expectation per item.")
+    max_turns: int | None = Field(default=None, gt=0, description="Maximum executor turns for this scenario. Overrides the default if set.")
 
     @classmethod
     def from_file(cls, path: Path) -> Self:

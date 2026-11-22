@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages.ai import UsageMetadata
 from langchain_core.messages.tool import tool_call
 
 from restless.actor.executor import Executor
@@ -20,23 +21,23 @@ from restless.openapi.catalog import ApiCatalog
 from restless.tools.api_clients import create_api_client
 from restless.tools.http_tool import HttpCall, create_http_tool
 from restless.tools.operation_tool import create_operation_tool
-from tests.fakes import ScriptedModel, http_call, lookup, request
+from tests.fakes import ScriptedModel, http_call, lookup, request, with_usage
 
 SPEC: dict[str, Any] = {"paths": {"/orders": {"post": {"summary": "Create an order", "responses": {"201": {"description": "Created"}}}}}}
 SCENARIO = Scenario(name="create order", apis={"orders": ApiConfig(url="https://orders.test", openapi="orders.json")}, do="Create an order.", expect=["the API answers 201"])
 
 
 class FixedJudge(Judge):
-    """Returns a fixed verdict and remembers what it was asked to judge."""
+    """Returns a fixed verdict, without token usage, and remembers what it was asked to judge."""
 
     def __init__(self, verdict: JudgeReport):
         self._verdict = verdict
         self.call_logs: list[list[HttpCall]] = []
 
-    async def report(self, scenario: str, call_log: list[HttpCall]) -> JudgeReport:
+    async def report(self, scenario: str, call_log: list[HttpCall]) -> tuple[JudgeReport, UsageMetadata | None]:
         self.call_logs.append(call_log)
 
-        return self._verdict
+        return self._verdict, None
 
 
 async def run(script: Iterator[AIMessage], status: int, *, max_http_calls: int = 5, max_turns: int = 10) -> tuple[Report, FixedJudge, ScriptedModel]:
@@ -77,6 +78,22 @@ async def test_lookup_then_request_then_judge() -> None:
     assert [message.tool_call_id for message in last_turn if isinstance(message, ToolMessage)] == ["call-1", "call-2"]
 
 
+async def test_executor_token_usage_is_summed_across_turns() -> None:
+    # Each turn reports its own tokens, the way OpenAI bills every request separately:
+    script = iter(
+        [
+            with_usage(lookup("POST /orders", "call-1"), input_tokens=1000, output_tokens=40),
+            with_usage(request("/orders", "call-2"), input_tokens=1500, output_tokens=60, cache_read=1024),
+            with_usage(AIMessage(content="Created order 7."), input_tokens=2000, output_tokens=30, cache_read=1408),
+        ]
+    )
+
+    report, _, _ = await run(script, status=201)
+
+    # One total for the run, with the cached part of the input kept apart:
+    assert report.executor_usage == {"input_tokens": 4500, "output_tokens": 130, "total_tokens": 4630, "input_token_details": {"cache_read": 2432}}
+
+
 async def test_server_error_stops_the_run_without_the_judge() -> None:
     script = iter([request("/orders", "call-1"), AIMessage(content="never reached")])
 
@@ -97,6 +114,23 @@ async def test_budget_ends_the_run_as_inconclusive() -> None:
     assert report.steps == 2
     assert len(report.call_log) == 1
     assert judge.call_logs == []
+
+
+async def test_run_stopped_by_the_budget_still_reports_its_token_usage() -> None:
+    script = iter(
+        [
+            with_usage(request("/orders", "call-1"), input_tokens=1000, output_tokens=50),
+            with_usage(request("/orders", "call-2"), input_tokens=1200, output_tokens=50),
+            AIMessage(content="never reached"),
+        ]
+    )
+
+    report, _, _ = await run(script, status=201, max_http_calls=1)
+
+    assert report.result.verdict == "inconclusive"
+    # Both turns cost tokens, including the one whose request the budget held back, and no judge ran to add its own:
+    assert (report.executor_usage["input_tokens"], report.executor_usage["output_tokens"]) == (2200, 100)
+    assert report.judge_usage is None
 
 
 async def test_run_that_uses_the_whole_budget_still_reaches_the_judge() -> None:
