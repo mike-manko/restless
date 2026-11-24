@@ -16,8 +16,10 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     No yield needed: monkeypatch restores the environment itself after each test.
     """
 
-    for name in Settings.model_fields:
-        monkeypatch.delenv(name.upper(), raising=False)
+    # Top-level settings (LOG_LEVEL) and nested ones (EXECUTOR__MODEL), which start with the name of their settings field:
+    for name in list(os.environ):
+        if name.lower().partition("__")[0] in Settings.model_fields:
+            monkeypatch.delenv(name)
 
     monkeypatch.delenv("RESTLESS_TOKEN", raising=False)
 

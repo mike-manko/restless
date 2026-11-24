@@ -14,7 +14,7 @@ from restless.cli import _print_report, app
 from restless.model.report import JudgeReport, Report
 from restless.model.scenario import Scenario
 from restless.openapi.loader import SpecLoadError
-from restless.settings import Settings
+from restless.settings import OpenAIModelSettings, Settings
 from restless.tools.http_tool import HttpCall
 from tests.fakes import http_call
 
@@ -32,7 +32,8 @@ expect:
 def use_test_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """Settings built here instead of from .env, and logging left the way pytest set it up."""
 
-    settings = Settings(_env_file=None, openai_api_key=SecretStr("sk-test"), executor_model="test-model", judge_model="test-model")
+    model = OpenAIModelSettings(provider="openai", model="test-model", api_key=SecretStr("sk-test"))
+    settings = Settings(_env_file=None, executor=model, judge=model)
     monkeypatch.setattr("restless.cli.get_settings", lambda: settings)
     monkeypatch.setattr("restless.cli.configure_logging", lambda level: None)
 

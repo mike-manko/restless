@@ -4,14 +4,16 @@ from typing import Any
 
 import httpx
 import pytest
+from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage
-from pydantic import SecretStr, ValidationError
+from langchain_openai import AzureChatOpenAI, ChatOpenAI
+from pydantic import SecretStr
 
 from restless.model.api_config import ApiConfig
 from restless.model.report import JudgeReport, Report
 from restless.model.scenario import Scenario
 from restless.runner import _create_auths, _create_model, run_scenario
-from restless.settings import Settings
+from restless.settings import AnthropicModelSettings, AnthropicReasoningEffort, AzureOpenAIModelSettings, OpenAIModelSettings, Settings
 from restless.tools.api_clients import create_api_client
 from tests.fakes import ScriptedModel, judge_reply, lookup, request
 
@@ -42,7 +44,7 @@ def sent_authorization(auth: httpx.Auth | None) -> str | None:
 
 
 async def run_with_fakes(script: list[AIMessage], *, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, token: str | None = None, max_turns: int = 10) -> tuple[Report, list[httpx.Request]]:
-    """Run SCENARIO end to end with OpenAI and the network replaced: both models play back scripts, and every API answers 201."""
+    """Run SCENARIO end to end with the models and the network replaced: both models play back scripts, and every API answers 201."""
 
     # Each API's spec file, in the folder that relative openapi paths start from:
     for api in SCENARIO.apis.values():
@@ -57,13 +59,13 @@ async def run_with_fakes(script: list[AIMessage], *, tmp_path: Path, monkeypatch
 
     monkeypatch.setattr("restless.runner.create_api_client", lambda url, **options: create_api_client(url, transport=httpx.MockTransport(handler), **options))
 
-    # Scripted models instead of OpenAI, picked by the model name in the settings:
+    # Scripted models instead of real ones, picked by the model name in the settings:
     models = {"executor-model": ScriptedModel(messages=iter(script)), "judge-model": ScriptedModel(messages=iter([judge_reply("pass")]))}
-    monkeypatch.setattr("restless.runner._create_model", lambda name, reasoning_effort, settings: models[name])
+    monkeypatch.setattr("restless.runner._create_model", lambda model_settings: models[model_settings.model])
 
-    settings = Settings(
-        _env_file=None, openai_api_key=SecretStr("sk-test"), executor_model="executor-model", judge_model="judge-model", http_timeout_seconds=5, max_http_calls=5, default_max_turns=max_turns
-    )
+    executor = OpenAIModelSettings(provider="openai", model="executor-model", api_key=SecretStr("sk-test"))
+    judge = OpenAIModelSettings(provider="openai", model="judge-model", api_key=SecretStr("sk-test"))
+    settings = Settings(_env_file=None, executor=executor, judge=judge, http_timeout_seconds=5, max_http_calls=5, default_max_turns=max_turns)
     report = await run_scenario(SCENARIO, base_dir=tmp_path, settings=settings, token=token)
 
     return report, received
@@ -87,19 +89,37 @@ def test_token_hidden_in_config_repr() -> None:
     assert "from-config" not in repr(APIS["orders"])
 
 
-def test_each_role_gets_its_own_model_and_reasoning_effort() -> None:
-    settings = Settings(_env_file=None, openai_api_key=SecretStr("sk-test"), executor_model="small-model", judge_model="big-model", judge_reasoning_effort="high")
+def test_openai_settings_build_an_openai_model() -> None:
+    model_settings = OpenAIModelSettings(provider="openai", model="small-model", api_key=SecretStr("sk-openai"))
 
-    executor = _create_model(settings.executor_model, settings.executor_reasoning_effort, settings)
-    judge = _create_model(settings.judge_model, settings.judge_reasoning_effort, settings)
+    model = _create_model(model_settings)
 
-    assert (executor.model_name, executor.reasoning_effort) == ("small-model", None)
-    assert (judge.model_name, judge.reasoning_effort) == ("big-model", "high")
+    # The key from the settings, not one the library found in the environment:
+    assert isinstance(model, ChatOpenAI)
+    assert (model.model_name, model.openai_api_key, model.reasoning_effort) == ("small-model", SecretStr("sk-openai"), None)
 
 
-def test_unknown_reasoning_effort_fails_at_startup() -> None:
-    with pytest.raises(ValidationError, match="judge_reasoning_effort"):
-        Settings(_env_file=None, openai_api_key=SecretStr("sk-test"), executor_model="m", judge_model="m", judge_reasoning_effort="extreme")  # type: ignore[arg-type]
+def test_azure_settings_build_an_azure_model_for_the_deployment() -> None:
+    model_settings = AzureOpenAIModelSettings(
+        provider="azure_openai", endpoint="https://my-resource.openai.azure.com/", deployment="big-deployment", api_version="2024-10-21", api_key=SecretStr("sk-azure"), reasoning_effort="high"
+    )
+
+    model = _create_model(model_settings)
+
+    assert isinstance(model, AzureChatOpenAI)
+    assert (model.azure_endpoint, model.deployment_name, model.openai_api_version) == ("https://my-resource.openai.azure.com/", "big-deployment", "2024-10-21")
+    assert (model.openai_api_key, model.reasoning_effort) == (SecretStr("sk-azure"), "high")
+
+
+# None leaves the parameter out; max is Anthropic's own top level, which OpenAI doesn't have:
+@pytest.mark.parametrize("reasoning_effort", [None, "max"])
+def test_anthropic_settings_build_an_anthropic_model(reasoning_effort: AnthropicReasoningEffort | None) -> None:
+    model_settings = AnthropicModelSettings(provider="anthropic", model="claude-opus-4-6", api_key=SecretStr("sk-anthropic"), reasoning_effort=reasoning_effort)
+
+    model = _create_model(model_settings)
+
+    assert isinstance(model, ChatAnthropic)
+    assert (model.model, model.anthropic_api_key, model.reasoning_effort) == ("claude-opus-4-6", SecretStr("sk-anthropic"), reasoning_effort)
 
 
 def test_judge_schema_has_no_defaults_for_openai_strict_mode() -> None:

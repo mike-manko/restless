@@ -1,9 +1,12 @@
 import logging
 from contextlib import AsyncExitStack
 from pathlib import Path
+from typing import assert_never
 
 import httpx
-from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models import BaseChatModel
+from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
 from restless.actor.executor import Executor
 from restless.actor.judge import Judge
@@ -14,7 +17,7 @@ from restless.model.report import Report
 from restless.model.scenario import Scenario
 from restless.openapi.catalog import ApiCatalog
 from restless.openapi.loader import load_specs
-from restless.settings import ReasoningEffort, Settings
+from restless.settings import AnthropicModelSettings, AzureOpenAIModelSettings, ModelSettings, OpenAIModelSettings, Settings
 from restless.tools.api_clients import BearerTokenAuth, create_api_client, new_traceparent
 from restless.tools.http_tool import create_http_tool
 from restless.tools.operation_tool import create_operation_tool
@@ -36,8 +39,8 @@ async def run_scenario(scenario: Scenario, *, base_dir: Path, settings: Settings
 
     specs = await load_specs(apis, auths, base_dir=base_dir, timeout_seconds=settings.http_timeout_seconds)
     catalog = ApiCatalog(specs)
-    executor_model = _create_model(settings.executor_model, settings.executor_reasoning_effort, settings)
-    judge_model = _create_model(settings.judge_model, settings.judge_reasoning_effort, settings)
+    executor_model = _create_model(settings.executor)
+    judge_model = _create_model(settings.judge)
 
     # Once per run: one trace ID shared by every call, so the run can be found in Application Insights:
     traceparent = new_traceparent()
@@ -70,11 +73,28 @@ async def run_scenario(scenario: Scenario, *, base_dir: Path, settings: Settings
     return report
 
 
-def _create_model(name: str, reasoning_effort: ReasoningEffort | None, settings: Settings) -> ChatOpenAI:
-    """One chat model. reasoning_effort=None leaves the parameter out of the request, which models without reasoning require."""
+def _create_model(model_settings: ModelSettings) -> BaseChatModel:
+    """One chat model for the provider in the settings. reasoning_effort=None leaves the parameter out of the request, which models without reasoning require."""
 
-    # Field names, not the aliases model= and api_key=: the pydantic mypy plugin only knows the field names:
-    return ChatOpenAI(model_name=name, openai_api_key=settings.openai_api_key, reasoning_effort=reasoning_effort)
+    # Field names, not the aliases model= and api_key=: the pydantic mypy plugin only knows the field names, so it checks every keyword.
+    # A dict passed to model_validate isn't checked at all, and LangChain moves an unknown key into model_kwargs with only a warning:
+    if isinstance(model_settings, OpenAIModelSettings):
+        return ChatOpenAI(model_name=model_settings.model, openai_api_key=model_settings.api_key, reasoning_effort=model_settings.reasoning_effort)
+
+    if isinstance(model_settings, AzureOpenAIModelSettings):
+        return AzureChatOpenAI(
+            azure_endpoint=model_settings.endpoint,
+            deployment_name=model_settings.deployment,
+            openai_api_version=model_settings.api_version,
+            openai_api_key=model_settings.api_key,
+            reasoning_effort=model_settings.reasoning_effort,
+        )
+
+    if isinstance(model_settings, AnthropicModelSettings):
+        return ChatAnthropic(model=model_settings.model, anthropic_api_key=model_settings.api_key, reasoning_effort=model_settings.reasoning_effort)
+
+    # Every provider is handled above, so mypy types model_settings as Never here. A new provider in ModelSettings makes this line a mypy error until it gets a branch:
+    assert_never(model_settings)
 
 
 def _create_auths(apis: dict[str, ApiConfig], token: str | None) -> dict[str, httpx.Auth | None]:

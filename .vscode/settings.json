@@ -1,6 +1,24 @@
 {
-    "python.analysis.typeCheckingMode": "standard",
+    // mypy is the type checker (pre-commit hook, and the mypy extension in the editor). Pylance's own checker disagrees with it on pydantic
+    // models that accept field names and aliases (LangChain's), so it's off; Pylance still does completions, imports and navigation:
+    "python.analysis.typeCheckingMode": "off",
     "python.analysis.diagnosticMode": "openFilesOnly",
+    // Accepting a completion for a name that isn't imported yet adds its import (off by default in Pylance)
+    "python.analysis.autoImportCompletions": true,
+    // Pylance indexes only the top level of installed packages; these get indexed deeper, so e.g. BaseChatModel is offered too
+    "python.analysis.packageIndexDepths": [
+        { "name": "langchain_core", "depth": 3 },
+        { "name": "langchain_openai", "depth": 2 },
+        { "name": "langchain_anthropic", "depth": 2 },
+        { "name": "langgraph", "depth": 3 },
+        { "name": "pydantic_settings", "depth": 2 }
+    ],
+    // On save, Ruff sorts the imports and removes unused ones, so where an import got added doesn't matter
+    "[python]": {
+        "editor.codeActionsOnSave": {
+            "source.organizeImports.ruff": "explicit"
+        }
+    },
     // Do on save what the pre-commit hooks check, so commits stop failing on them
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
@@ -9,5 +27,6 @@
     "files.eol": "\n",
     "python.testing.pytestArgs": ["tests"],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "python.terminal.useEnvFile": true
 }

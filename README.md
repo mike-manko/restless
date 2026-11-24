@@ -50,15 +50,36 @@ cp .env.example .env
 Copy-Item .env.example .env
 ```
 
-Edit `.env` and fill in these three required values:
+Edit `.env` and fill in these four required values:
 
 ```dotenv
-OPENAI_API_KEY=your-api-key
-EXECUTOR_MODEL=your-executor-model-id
-JUDGE_MODEL=your-judge-model-id
+EXECUTOR__API_KEY=your-api-key
+EXECUTOR__MODEL=your-executor-model-id
+JUDGE__API_KEY=your-api-key
+JUDGE__MODEL=your-judge-model-id
 ```
 
 Replace the placeholders with model IDs available to your account. The executor needs tool calling; the judge needs structured output. You can use the same model for both. Leave the reasoning-effort fields empty unless your chosen models support them.
+
+To run a model on Anthropic instead, set its provider to `anthropic` and use an Anthropic key and model ID:
+
+```dotenv
+EXECUTOR__PROVIDER=anthropic
+EXECUTOR__API_KEY=your-anthropic-key
+EXECUTOR__MODEL=your-claude-model-id
+```
+
+To run a model on Azure OpenAI, switch its provider, empty its `MODEL` line, and fill in the Azure lines:
+
+```dotenv
+EXECUTOR__PROVIDER=azure_openai
+EXECUTOR__API_KEY=your-azure-key
+EXECUTOR__ENDPOINT=https://your-resource.openai.azure.com/
+EXECUTOR__DEPLOYMENT=your-deployment-name
+EXECUTOR__API_VERSION=your-api-version
+```
+
+Each role picks its own provider, so the executor can run on Azure while the judge runs on Anthropic.
 
 Run the included scenario from the repository root:
 
@@ -149,17 +170,22 @@ This saves the text summary (UTF-8), not the full HTTP call log. Markdown report
 
 Settings load from environment variables and `.env` in the current working directory. Environment variables take precedence. The [example file](.env.example) lists the application settings; `.env` is ignored by Git.
 
-| Variable                    | Default  | Purpose                                                           |
-| --------------------------- | -------- | ----------------------------------------------------------------- |
-| `OPENAI_API_KEY`            | Required | Key for model calls.                                              |
-| `EXECUTOR_MODEL`            | Required | Model that chooses and executes API requests.                     |
-| `JUDGE_MODEL`               | Required | Model that reviews the call log.                                  |
-| `EXECUTOR_REASONING_EFFORT` | Unset    | Optional effort for the executor model.                           |
-| `JUDGE_REASONING_EFFORT`    | Unset    | Optional effort for the judge model.                              |
-| `HTTP_TIMEOUT_SECONDS`      | `30`     | HTTP client timeout, in seconds.                                  |
-| `MAX_HTTP_CALLS`            | `20`     | HTTP-call budget per scenario.                                    |
-| `DEFAULT_MAX_TURNS`         | `40`     | Executor-turn budget, including turns used for lookups and waits. |
-| `LOG_LEVEL`                 | `INFO`   | `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`.                |
+| Variable                     | Default                            | Purpose                                                                        |
+| ---------------------------- | ---------------------------------- | ------------------------------------------------------------------------------ |
+| `EXECUTOR__PROVIDER`         | Required                           | `openai`, `anthropic` or `azure_openai`, for the model that runs API requests. |
+| `EXECUTOR__API_KEY`          | Required                           | Key for the executor's provider.                                               |
+| `EXECUTOR__REASONING_EFFORT` | Unset                              | Optional effort for the executor model. The levels differ by provider.         |
+| `EXECUTOR__MODEL`            | Required for `openai`, `anthropic` | Model ID.                                                                      |
+| `EXECUTOR__ENDPOINT`         | Required for `azure_openai`        | Azure OpenAI resource endpoint.                                                |
+| `EXECUTOR__DEPLOYMENT`       | Required for `azure_openai`        | Deployment name in that resource.                                              |
+| `EXECUTOR__API_VERSION`      | Required for `azure_openai`        | Azure OpenAI API version.                                                      |
+| `JUDGE__…`                   | Same as `EXECUTOR__…`              | The same settings for the model that reviews the call log.                     |
+| `HTTP_TIMEOUT_SECONDS`       | `30`                               | HTTP client timeout, in seconds.                                               |
+| `MAX_HTTP_CALLS`             | `20`                               | HTTP-call budget per scenario.                                                 |
+| `DEFAULT_MAX_TURNS`          | `40`                               | Executor-turn budget, including turns used for lookups and waits.              |
+| `LOG_LEVEL`                  | `INFO`                             | `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`.                             |
+
+Reasoning effort levels differ by provider: OpenAI and Azure OpenAI take `none`, `minimal`, `low`, `medium`, `high` or `xhigh`; Anthropic takes `low`, `medium`, `high`, `xhigh` or `max`. A level the provider doesn't have stops the run at startup, and so does a setting that doesn't belong to the chosen provider, such as `EXECUTOR__DEPLOYMENT` with `openai`, so leave the other provider's lines empty.
 
 The HTTP-call budget is checked before each request is sent, so a run never sends more than `MAX_HTTP_CALLS` requests; a run that needs more ends as inconclusive. `DEFAULT_MAX_TURNS` applies to every scenario that doesn't set its own `max_turns`. These are execution limits, not a spending cap.
 

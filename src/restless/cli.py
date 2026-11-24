@@ -49,7 +49,7 @@ def run(
 ) -> None:
     """Run one scenario and print the verdict."""
 
-    # Everything that isn't the API's behaviour (settings, scenario file, specs, OpenAI) is a setup error, with its own exit code:
+    # Everything that isn't the API's behaviour (settings, scenario file, specs, the model provider) is a setup error, with its own exit code:
     try:
         settings = get_settings()
         configure_logging(settings.log_level)
